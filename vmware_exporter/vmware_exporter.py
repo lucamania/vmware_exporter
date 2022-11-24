@@ -1130,7 +1130,7 @@ class VmwareCollector():
                     )
                 )
 
-            for i in range(labels_cnt, len(self._labelNames['vms']) - 3):
+            for i in range(labels_cnt, len(self._labelNames['vms']) - 2):
                 labels[moid].append('n/a')
 
             if 'guest.ipAddress' in row:
