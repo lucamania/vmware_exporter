@@ -9,9 +9,11 @@ from __future__ import print_function
 
 # Generic imports
 import argparse
+from operator import mod
 import os
 import re
 import ssl
+import string
 import sys
 import traceback
 import pytz
@@ -94,9 +96,9 @@ class VmwareCollector():
 
         # label names and ammount will be needed later to insert labels from custom attributes
         self._labelNames = {
-            'vms': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name', 'ip_address'],
-            'vm_perf': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name', 'ip_address'],
-            'vmguests': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name', 'ip_address'],
+            'vms': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name', 'ip_address', 'os'],
+            'vm_perf': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name', 'ip_address', 'os'],
+            'vmguests': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name', 'ip_address', 'os'],
             'snapshots': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name'],
             'datastores': ['ds_name', 'dc_name', 'ds_cluster'],
             'hosts': ['host_name', 'dc_name', 'cluster_name'],
@@ -757,6 +759,7 @@ class VmwareCollector():
                 'guest.toolsVersion',
                 'guest.toolsVersionStatus2',
                 'guest.ipAddress',
+                'guest.guestFullName',
             ])
 
         if self.collect_only['snapshots'] is True:
@@ -797,6 +800,7 @@ class VmwareCollector():
         logging.info("Fetched vim.VirtualMachine inventory ({fetch_time})".format(fetch_time=fetch_time))
 
         return virtual_machines
+
 
     @defer.inlineCallbacks
     def customAttributesLabelNames(self, metric_type):
@@ -975,6 +979,7 @@ class VmwareCollector():
         datacenters = yield threads.deferToThread(lambda: content.rootFolder.childEntity)
         return datacenters
 
+
     @run_once_property
     @defer.inlineCallbacks
     def datastore_labels(self):
@@ -1054,6 +1059,7 @@ class VmwareCollector():
             tags = tags['vms']
         return tags
 
+
     @run_once_property
     @defer.inlineCallbacks
     def host_tags(self):
@@ -1083,8 +1089,9 @@ class VmwareCollector():
     def vm_labels(self):
 
         virtual_machines, host_labels = yield parallelize(self.vm_inventory, self.host_labels)
-
+            
         labels = {}
+
         for moid, row in virtual_machines.items():
 
             host_moid = None
@@ -1123,7 +1130,7 @@ class VmwareCollector():
                     )
                 )
 
-            for i in range(labels_cnt, len(self._labelNames['vms']) - 1):
+            for i in range(labels_cnt, len(self._labelNames['vms']) - 3):
                 labels[moid].append('n/a')
 
             if 'guest.ipAddress' in row:
@@ -1134,6 +1141,16 @@ class VmwareCollector():
                 i = 'n/a'
 
             labels[moid] = labels[moid] + [i]
+
+            if 'guest.guestFullName' in row:
+                o = row['guest.guestFullName']
+                if o.startswith('['):
+                    o = o[1:o.find("]")]
+            else:
+                o = 'n/a'
+
+            labels[moid] = labels[moid] + [o]
+
 
         return labels
 
@@ -1202,6 +1219,7 @@ class VmwareCollector():
                     metric._labelnames += customAttributesLabelNames
                     metric._labelnames += labelnames[len(self._labelNames[metric_type]):]
                     metric._labelnames = list(map(lambda x: re.sub('[^a-zA-Z0-9_]', '_', x), metric._labelnames))
+
 
     @defer.inlineCallbacks
     def _vmware_get_datastores(self, ds_metrics):
