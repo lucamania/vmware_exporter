@@ -94,9 +94,9 @@ class VmwareCollector():
 
         # label names and ammount will be needed later to insert labels from custom attributes
         self._labelNames = {
-            'vms': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name'],
-            'vm_perf': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name'],
-            'vmguests': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name'],
+            'vms': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name', 'ip_address'],
+            'vm_perf': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name', 'ip_address'],
+            'vmguests': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name', 'ip_address'],
             'snapshots': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name'],
             'datastores': ['ds_name', 'dc_name', 'ds_cluster'],
             'hosts': ['host_name', 'dc_name', 'cluster_name'],
@@ -756,6 +756,7 @@ class VmwareCollector():
                 'guest.toolsStatus',
                 'guest.toolsVersion',
                 'guest.toolsVersionStatus2',
+                'guest.ipAddress',
             ])
 
         if self.collect_only['snapshots'] is True:
@@ -1122,8 +1123,17 @@ class VmwareCollector():
                     )
                 )
 
-            for i in range(labels_cnt, len(self._labelNames['vms'])):
+            for i in range(labels_cnt, len(self._labelNames['vms']) - 1):
                 labels[moid].append('n/a')
+
+            if 'guest.ipAddress' in row:
+                i = row['guest.ipAddress']
+                if i.startswith('['):
+                    i = i[1:i.find("]")]
+            else:
+                i = 'n/a'
+
+            labels[moid] = labels[moid] + [i]
 
         return labels
 
