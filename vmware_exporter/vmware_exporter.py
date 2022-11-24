@@ -96,9 +96,9 @@ class VmwareCollector():
 
         # label names and ammount will be needed later to insert labels from custom attributes
         self._labelNames = {
-            'vms': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name', 'ip_address', 'os'],
-            'vm_perf': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name', 'ip_address', 'os'],
-            'vmguests': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name', 'ip_address', 'os'],
+            'vms': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name', 'ip_address', 'os', 'folder'],
+            'vm_perf': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name', 'ip_address', 'os', 'folder'],
+            'vmguests': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name', 'ip_address', 'os', 'folder'],
             'snapshots': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name'],
             'datastores': ['ds_name', 'dc_name', 'ds_cluster'],
             'hosts': ['host_name', 'dc_name', 'cluster_name'],
@@ -979,6 +979,23 @@ class VmwareCollector():
         datacenters = yield threads.deferToThread(lambda: content.rootFolder.childEntity)
         return datacenters
 
+##################################################
+#################QUI#############################
+##################################################
+
+    @run_once_property
+    @defer.inlineCallbacks
+    def get_all_obj(self):
+        content = yield self.content
+
+        obj = {}
+        container = content.viewManager.CreateContainerView(content.rootFolder, [vim.VirtualMachine], True)
+        for c in container.view:
+            obj.update({c: c.name})
+
+        container.Destroy()
+        return obj
+
 
     @run_once_property
     @defer.inlineCallbacks
@@ -1088,8 +1105,33 @@ class VmwareCollector():
     @defer.inlineCallbacks
     def vm_labels(self):
 
-        virtual_machines, host_labels = yield parallelize(self.vm_inventory, self.host_labels)
-            
+        virtual_machines, host_labels, all_vms = yield parallelize(self.vm_inventory, self.host_labels, self.get_all_obj)
+
+        def get_folder_path(obj):
+            paths = []
+            if isinstance(obj, vim.Folder):
+                paths.append(obj.name)
+
+            thisobj = obj
+            thisobj = thisobj.parent.parent
+            if isinstance(thisobj, vim.Folder):
+                paths.append(thisobj.name)
+
+            return paths
+
+        folders = {}
+
+        for item in list(all_vms.keys()):
+            vm = str(item)
+            if vm.startswith('\'vim.VirtualMachine:'):
+                vm = vm[20:vm.find('\'')-1]
+
+            vmf = str([get_folder_path(item)])
+            if vmf.startswith('[['):
+                vmf = vmf[3:vmf.find(']')-1]
+                
+            folders[vm] = vmf
+
         labels = {}
 
         for moid, row in virtual_machines.items():
@@ -1130,7 +1172,9 @@ class VmwareCollector():
                     )
                 )
 
-            for i in range(labels_cnt, len(self._labelNames['vms']) - 2):
+        #####################################################################################
+
+            for i in range(labels_cnt, len(self._labelNames['vms']) - 3):
                 labels[moid].append('n/a')
 
             if 'guest.ipAddress' in row:
@@ -1150,7 +1194,11 @@ class VmwareCollector():
                 o = 'n/a'
 
             labels[moid] = labels[moid] + [o]
+        
+            labels[moid] = labels[moid] + [folders[moid]]
 
+            
+        #####################################################################################
 
         return labels
 
